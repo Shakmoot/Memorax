@@ -1,39 +1,40 @@
 import os
 from dotenv import load_dotenv
 
-# Import the modules your team is building
 from core.orchestrator import AIAssistant
 from ui.app import start_ui
+from glasses.server import GlassesServer  # NEW IMPORT
 
 def main():
-    # 1. Load environment variables (API keys)
     print("[SYSTEM] Loading environment variables...")
     load_dotenv()
 
-    # 2. Initialize the AI Brain
     print("[SYSTEM] Initializing AI Assistant...")
     assistant = AIAssistant()
 
-    # 3. Define the Bridge (Callback Function)
-    # The UI will call this every time the user hits "Send"
-    def handle_user_input(message_text: str) -> str:
-        print(f"[DEBUG] User asked: {message_text}")
-        
+    # Callback 1: Handle text typed into the UI
+    def handle_ui_message(message_text: str) -> str:
+        print(f"[DEBUG] User typed: {message_text}")
         try:
-            # Send text to Member 2's AI module
-            ai_response = assistant.get_response(message_text)
-            print(f"[DEBUG] AI replied: {ai_response}")
-            return ai_response
-            
+            return assistant.get_response(message_text)
         except Exception as e:
-            error_msg = f"Error communicating with AI: {str(e)}"
-            print(f"[ERROR] {error_msg}")
-            return error_msg
+            return f"Error communicating with AI: {str(e)}"
 
-    # 4. Start the Application
+    # Callback 2: Handle data arriving over Wi-Fi from the glasses
+    def handle_glasses_command(command: str):
+        print(f"[SYSTEM] The glasses hardware sent a command: {command}")
+        if command == "BUTTON_PRESS":
+            print("[SYSTEM] Triggering AI Vision or Voice routine...")
+            # Later, we will trigger the AI when the button is pressed.
+
+    # Start the background Network Server
+    print("[SYSTEM] Starting Glasses Network Server...")
+    glasses_server = GlassesServer(port=65432, on_command_callback=handle_glasses_command)
+    glasses_server.start()
+
+    # Start the UI (This runs on the main thread and keeps the app alive)
     print("[SYSTEM] Starting User Interface...")
-    # Pass the bridge function to Member 3/4's UI module
-    start_ui(on_message_callback=handle_user_input)
+    start_ui(on_message_callback=handle_ui_message)
 
 if __name__ == "__main__":
     main()
