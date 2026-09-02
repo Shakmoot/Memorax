@@ -35,14 +35,55 @@ class GlassesServer:
                     print(f"[NETWORK ERROR] {e}")
 
     def _handle_client(self, client_socket):
-        """Reads the data sent by the ESP32."""
+        """Reads the data sent by the ESP32 using a Header/Payload protocol."""
         with client_socket:
-            # Receive up to 1024 bytes (fine for text commands, we'll need more for images later)
-            data = client_socket.recv(1024)
-            if data:
-                command = data.decode('utf-8').strip()
-                print(f"[NETWORK] Received command: {command}")
+            try:
+                # 1. Read the header one byte at a time until the newline
+                header = b""
+                while True:
+                    char = client_socket.recv(1)
+                    if not char or char == b'\n':
+                        break
+                    header += char
                 
-                # Pass the command to main.py to handle
-                if self.on_command_callback:
-                    self.on_command_callback(command)
+                if not header:
+                    return
+
+                header_text = header.decode('utf-8').strip()
+                print(f"[NETWORK] Received header: {header_text}")
+                
+                # 2. Parse the command and the size of the payload
+                if ":" in header_text:
+                    command, size_str = header_text.split(":", 1)
+                    payload_size = int(size_str)
+                else:
+                    command = header_text
+                    payload_size = 0
+
+                # 3. Read the exact number of bytes specified in the payload size
+                payload = b""
+                bytes_received = 0
+                while bytes_received < payload_size:
+                    # Read in chunks, but don't read more than what's left
+                    chunk = client_socket.recv(min(4096, payload_size - bytes_received))
+                    if not chunk:
+                        raise ConnectionError("Socket closed before full payload was received.")
+                    payload += chunk
+                    bytes_received += len(chunk)
+
+                # 4. Handle the specific command
+                if command == "BUTTON_PRESS":
+                    if self.on_command_callback:
+                        self.on_command_callback("BUTTON_PRESS")
+                        
+                elif command == "IMAGE":
+                    print(f"[NETWORK] Received complete image! Size: {len(payload)} bytes")
+                    # Save the image payload to disk so the AI module can use it later
+                    with open("latest_capture.jpg", "wb") as f:
+                        f.write(payload)
+                    print("[NETWORK] Image saved as 'latest_capture.jpg'")
+                    if self.on_command_callback:
+                        self.on_command_callback("IMAGE_RECEIVED")
+
+            except Exception as e:
+                print(f"[NETWORK ERROR] Failed to handle client data: {e}")
