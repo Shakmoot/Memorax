@@ -15,7 +15,8 @@ def main():
     def handle_ui_message(message_text: str) -> str:
         print(f"[DEBUG] User typed: {message_text}")
         try:
-            return assistant.get_response(message_text)
+            # FIXED: We now use Member 2's 'ask_question' method
+            return assistant.ask_question(message_text)
         except Exception as e:
             return f"Error communicating with AI: {str(e)}"
 
@@ -25,8 +26,12 @@ def main():
             
         elif command == "IMAGE_RECEIVED":
             print("[SYSTEM] Image received from glasses. Sending to AI for analysis...")
-            # Route the saved image to the AI Orchestrator
-            ai_response = assistant.process_image("latest_capture.jpg")
+            
+            # FIXED: We pass the image to 'ask_question' along with a system prompt
+            ai_response = assistant.ask_question(
+                user_text="Describe what you see in this image in one brief sentence.", 
+                image_path="latest_capture.jpg"
+            )
             print(f"\n>>> AI VISION RESULT: {ai_response} <<<\n")
 
     print("[SYSTEM] Starting Glasses Network Server...")

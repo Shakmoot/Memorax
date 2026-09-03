@@ -4,7 +4,7 @@ from google.genai import types
 from dotenv import load_dotenv
 from PIL import Image  # NEW: Import the Pillow library to read images
 
-from tools import get_current_time
+from core.tools import get_current_time
 
 class AIAssistant:
     def __init__(self):
