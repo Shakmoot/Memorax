@@ -2,6 +2,7 @@ import os
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
+from PIL import Image  # NEW: Import the Pillow library to read images
 
 from tools import get_current_time
 
@@ -10,14 +11,12 @@ class AIAssistant:
         load_dotenv()
         self.client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
         
-        # 1. Fetch ALL available models dynamically directly from Google
+        # Fetch ALL available models dynamically
         self.available_models = []
         for model in self.client.models.list():
-            # We only want 'gemini' text/chat models (ignore search/embedding models)
             if 'gemini' in model.name:
                 self.available_models.append(model.name)
                 
-        # Fallback just in case the API fails to list models
         if not self.available_models:
             self.available_models = ['gemini-3.6-flash', 'gemini-1.5-flash', 'gemini-1.5-pro']
             
@@ -35,28 +34,32 @@ class AIAssistant:
                 )
             )
 
-    def ask_question(self, user_text):
-        """Sends a message, automatically trying ALL backup models silently if needed."""
+    def ask_question(self, user_text, image_path=None):
+        """Sends a message (and optionally an image), with silent fallback."""
         
+        # NEW: Bundle text and image together if an image is provided
+        message_content = user_text
+        if image_path:
+            try:
+                # Open the image file from your computer
+                img = Image.open(image_path)
+                # Google's library accepts a list of [Text, Image]
+                message_content = [user_text, img]
+            except Exception as error:
+                return f"System Error: Could not open the image. {error}"
+
         while self.current_model_index < len(self.available_models):
             try:
-                # TRY to send the message to the current model
-                response = self.chat.send_message(user_text)
+                # Send the message (which might now include an image!)
+                response = self.chat.send_message(message_content)
                 return response.text
                 
             except Exception:
-                # EXCEPT: The server rejected us (or the specific model doesn't support tools)
-                # The print statement has been removed. It will now fail silently.
-                
-                # Move to the next model in our massive list
+                # Fallback to the next model if it fails
                 self.current_model_index += 1
-                
-                # Start a new chat with the new model
                 if self.current_model_index < len(self.available_models):
                     self.start_new_chat()
                 
-        # If the loop finishes and EVERY SINGLE model failed:
-        # Reset back to the first model for the next question
         self.current_model_index = 0
         self.start_new_chat()
         
@@ -67,10 +70,12 @@ if __name__ == "__main__":
     print("Starting AI Assistant...\n")
     assistant = AIAssistant()
     
-    print("User: Hello, who are you?")
-    reply1 = assistant.ask_question("Hello, who are you?")
+    print("User: Can you tell me exactly what time it is right now?")
+    reply1 = assistant.ask_question("Can you tell me exactly what time it is right now?")
     print("AI:", reply1, "\n")
     
-    print("User: Can you tell me exactly what time it is right now?")
-    reply2 = assistant.ask_question("Can you tell me exactly what time it is right now?")
+    # NEW TEST: Vision!
+    # Because you are running the terminal from the main folder, the path is core/test_image.jpg
+    print("User: [Sends image] What is in this image?")
+    reply2 = assistant.ask_question("What is in this image? Describe it briefly.", image_path="core/test_image.jpg")
     print("AI:", reply2, "\n")
