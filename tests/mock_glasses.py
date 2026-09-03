@@ -1,6 +1,6 @@
 import socket
+import cv2  # OpenCV for webcam
 import time
-import os
 
 def send_payload(command: str, payload: bytes = b""):
     host = '127.0.0.1'
@@ -10,11 +10,9 @@ def send_payload(command: str, payload: bytes = b""):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect((host, port))
             
-            # Format the header: COMMAND:SIZE\n
             header = f"{command}:{len(payload)}\n"
             print(f"[MOCK ESP32] Sending Header: {header.strip()}")
             
-            # Send Header then Payload
             s.sendall(header.encode('utf-8'))
             if payload:
                 s.sendall(payload)
@@ -27,17 +25,39 @@ def send_payload(command: str, payload: bytes = b""):
 def simulate_button_press():
     send_payload("BUTTON_PRESS")
 
-def simulate_image_capture():
-    # We will generate a dummy byte array to simulate a 50KB JPEG image
-    # (In reality, the ESP32 would read this from the camera buffer)
-    dummy_image_bytes = os.urandom(50000) 
-    print("[MOCK ESP32] 'Click!' - Captured 50KB image.")
-    send_payload("IMAGE", dummy_image_bytes)
+def capture_real_image():
+    print("[MOCK ESP32] Warming up webcam...")
+    # Open the default camera (index 0)
+    cap = cv2.VideoCapture(0)
+    
+    # Wait a second for the camera sensor to adjust to the light
+    time.sleep(1)
+    
+    # Read a frame
+    ret, frame = cap.read()
+    cap.release()
+    
+    if not ret:
+        print("[MOCK ESP32] ERROR: Failed to grab a frame from the webcam.")
+        return
+    
+    # Compress the raw frame into a JPEG image in memory
+    # We use 80% quality to simulate the compression of a cheap ESP32 camera
+    encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 80]
+    ret, buffer = cv2.imencode('.jpg', frame, encode_param)
+    
+    if not ret:
+        print("[MOCK ESP32] ERROR: Failed to encode image to JPEG.")
+        return
+        
+    image_bytes = buffer.tobytes()
+    print(f"[MOCK ESP32] 'Click!' - Captured {len(image_bytes)} byte real image.")
+    send_payload("IMAGE", image_bytes)
 
 if __name__ == "__main__":
-    print("MOCK SMART GLASSES CLIENT")
-    print("1. Type 'btn' to simulate the physical button press.")
-    print("2. Type 'img' to simulate sending a captured photo.")
+    print("--- ADVANCED MOCK SMART GLASSES ---")
+    print("1. Type 'btn' to send a button press.")
+    print("2. Type 'img' to snap a REAL photo with your webcam and send it.")
     print("3. Type 'exit' to quit.")
     
     while True:
@@ -47,6 +67,6 @@ if __name__ == "__main__":
         elif user_input == 'btn':
             simulate_button_press()
         elif user_input == 'img':
-            simulate_image_capture()
+            capture_real_image()
         else:
             print("Invalid command.")
