@@ -4,7 +4,7 @@ from google.genai import types
 from dotenv import load_dotenv
 from PIL import Image  # NEW: Import the Pillow library to read images
 
-from core.tools import get_current_time
+from core.tools import get_current_time, save_memory, find_object
 
 class AIAssistant:
     def __init__(self):
@@ -64,6 +64,18 @@ class AIAssistant:
         self.start_new_chat()
         
         return "Servers are a little busy, please wait."
+
+    def start_new_chat(self):
+        """Creates a new chat session using the currently selected model."""
+        if self.current_model_index < len(self.available_models):
+            model_name = self.available_models[self.current_model_index]
+            self.chat = self.client.chats.create(
+                model=model_name, 
+                config=types.GenerateContentConfig(
+                    # Add the new tools to the list
+                    tools=[get_current_time, save_memory, find_object] 
+                )
+            )
 
 # --- TEST BLOCK ---
 if __name__ == "__main__":
