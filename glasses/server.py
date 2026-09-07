@@ -2,88 +2,68 @@ import socket
 import threading
 
 class GlassesServer:
-    def __init__(self, host='0.0.0.0', port=65432, on_command_callback=None):
-        self.host = host
+    def __init__(self, port, on_command_callback):
         self.port = port
         self.on_command_callback = on_command_callback
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.is_running = False
+        # Allow address reuse to prevent "Address already in use" errors if you restart quickly
+        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
     def start(self):
-        """Starts the server in a background thread so it doesn't block the UI."""
-        self.is_running = True
-        self.server_socket.bind((self.host, self.port))
+        self.server_socket.bind(('127.0.0.1', self.port))
         self.server_socket.listen(5)
-        print(f"[NETWORK] Glasses Server listening on {self.host}:{self.port}")
-        
-        # Create and start the background thread
-        server_thread = threading.Thread(target=self._listen_loop, daemon=True)
-        server_thread.start()
+        threading.Thread(target=self._accept_loop, daemon=True).start()
 
-    def _listen_loop(self):
-        """The infinite loop that waits for the ESP32 to connect."""
-        while self.is_running:
-            try:
-                # This line blocks ONLY this background thread, not the main app
-                client_socket, address = self.server_socket.accept()
-                print(f"[NETWORK] Connection received from {address}")
-                
-                # Handle the client data
-                self._handle_client(client_socket)
-            except Exception as e:
-                if self.is_running:
-                    print(f"[NETWORK ERROR] {e}")
+    def _accept_loop(self):
+        while True:
+            client, addr = self.server_socket.accept()
+            threading.Thread(target=self._handle_client, args=(client, addr), daemon=True).start()
 
-    def _handle_client(self, client_socket):
-        """Reads the data sent by the ESP32 using a Header/Payload protocol."""
-        with client_socket:
-            try:
-                # 1. Read the header one byte at a time until the newline
-                header = b""
-                while True:
-                    char = client_socket.recv(1)
-                    if not char or char == b'\n':
-                        break
-                    header += char
-                
-                if not header:
-                    return
+    def _handle_client(self, client_socket, addr):
+        print(f"[NETWORK] Connection received from {addr}")
+        try:
+            # 1. Read the header character by character until newline
+            header_data = b""
+            while b"\n" not in header_data:
+                chunk = client_socket.recv(1)
+                if not chunk:
+                    break
+                header_data += chunk
+            
+            header_str = header_data.decode('utf-8').strip()
+            print(f"[NETWORK] Received header: {header_str}")
+            
+            # 2. Parse the command and payload length
+            if ":" in header_str:
+                command, length_str = header_str.split(':', 1)
+                payload_length = int(length_str)
+            else:
+                command = header_str
+                payload_length = 0
 
-                header_text = header.decode('utf-8').strip()
-                print(f"[NETWORK] Received header: {header_text}")
-                
-                # 2. Parse the command and the size of the payload
-                if ":" in header_text:
-                    command, size_str = header_text.split(":", 1)
-                    payload_size = int(size_str)
-                else:
-                    command = header_text
-                    payload_size = 0
-
-                # 3. Read the exact number of bytes specified in the payload size
+            # 3. Route the commands
+            if command == "IMAGE":
+                # Read the binary image payload
                 payload = b""
-                bytes_received = 0
-                while bytes_received < payload_size:
-                    # Read in chunks, but don't read more than what's left
-                    chunk = client_socket.recv(min(4096, payload_size - bytes_received))
+                while len(payload) < payload_length:
+                    chunk = client_socket.recv(min(4096, payload_length - len(payload)))
                     if not chunk:
-                        raise ConnectionError("Socket closed before full payload was received.")
+                        break
                     payload += chunk
-                    bytes_received += len(chunk)
+                    
+                # Save the image
+                with open("latest_capture.jpg", "wb") as f:
+                    f.write(payload)
+                    
+                # Trigger the callback in main.py
+                self.on_command_callback("IMAGE_RECEIVED")
+                
+            else:
+                # NEW FIX: Forward all other commands (BUTTON_PRESS, START_MEETING, STOP_MEETING) 
+                # directly to the main.py callback instead of throwing them away!
+                self.on_command_callback(command)
 
-                # 4. Handle the specific command
-                if command == "BUTTON_PRESS":
-                    if self.on_command_callback:
-                        self.on_command_callback("BUTTON_PRESS")
-                        
-                elif command == "IMAGE":
-                    print(f"[NETWORK] Received complete image! Size: {len(payload)} bytes")
-                    # Save the image payload to disk so the AI module can use it later
-                    with open("latest_capture.jpg", "wb") as f:
-                        f.write(payload)
-                    print("[NETWORK] Image saved as 'latest_capture.jpg'")
-                    if self.on_command_callback:
-                        self.on_command_callback("IMAGE_RECEIVED")
-
-            except Exception as e:
-                print(f"[NETWORK ERROR] Failed to handle client data: {e}")
+        except Exception as e:
+            print(f"[NETWORK ERROR] {e}")
+        finally:
+            client_socket.close()
