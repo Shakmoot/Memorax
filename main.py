@@ -5,6 +5,8 @@ from core.orchestrator import AIAssistant
 from ui.app import start_ui
 from glasses.server import GlassesServer
 from core.audio_service import AudioService
+from core.tools import reminder_service
+import time
 
 def main():
     print("[SYSTEM] Loading environment variables...")
@@ -15,6 +17,18 @@ def main():
 
     print("[SYSTEM] Initializing Audio Service...")
     audio = AudioService()
+
+    # NEW: Setup Proactive Reminder Callback
+    def on_proactive_reminder(message):
+        print(f"\n[PROACTIVE ALERT] {message}")
+        # Wait gently if the AI is already in the middle of saying something else
+        while audio.is_speaking:
+            time.sleep(1)
+        audio.speak(f"Excuse me. Here is your reminder: {message}")
+        
+    reminder_service.set_callback(on_proactive_reminder)
+    reminder_service.start()
+    print("[SYSTEM] Background Reminder Engine Started.")
 
     def handle_ui_message(message_text: str) -> str:
         print(f"[DEBUG] User typed: {message_text}")
