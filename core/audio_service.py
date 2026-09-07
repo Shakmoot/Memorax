@@ -14,21 +14,47 @@ class AudioService:
         self.frames = []
         self.recording_thread = None
         self.meeting_filename = "latest_meeting.wav"
+        
+        # NEW: Interruption and State flags
+        self.is_speaking = False
+        self.stop_requested = False
+        self.is_listening = False
 
     def speak(self, text: str):
-        """Reads the provided text out loud in a thread-safe way."""
+        """Reads the provided text out loud in a thread-safe way, with interruption support."""
         print(f"[AUDIO] Speaking: {text}")
+        self.is_speaking = True
+        self.stop_requested = False
+        
         try:
+            # Initialize the engine locally on the current thread
             engine = pyttsx3.init()
             rate = engine.getProperty('rate')
             engine.setProperty('rate', rate - 20)
+            
+            # NEW: Setup an event callback to check for interruptions before every word
+            def on_word(name, location, length):
+                if self.stop_requested:
+                    print("[AUDIO] Speech interrupted by user.")
+                    engine.stop()
+                    
+            engine.connect('started-word', on_word)
+            
             engine.say(text)
             engine.runAndWait()
         except Exception as e:
             print(f"[AUDIO FATAL ERROR during speech] {e}")
+        finally:
+            self.is_speaking = False
+
+    def interrupt(self):
+        """Signals the TTS engine to stop speaking immediately."""
+        if self.is_speaking:
+            self.stop_requested = True
 
     def listen(self) -> str:
         """Listens to the default microphone and returns the transcribed text."""
+        self.is_listening = True
         try:
             # Using device_index=1 based on your hardware list
             with sr.Microphone(device_index=1) as source:
@@ -55,6 +81,8 @@ class AudioService:
         except Exception as e:
             print(f"[AUDIO FATAL ERROR during listening] {e}")
             return ""
+        finally:
+            self.is_listening = False
 
     # ---------------------------------------------------------
     # NEW: CONTINUOUS MEETING RECORDING METHODS
