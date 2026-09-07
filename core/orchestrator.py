@@ -2,7 +2,7 @@ import os
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
-from PIL import Image  # NEW: Import the Pillow library to read images
+from PIL import Image
 
 from core.tools import get_current_time, save_memory, find_object
 
@@ -11,71 +11,67 @@ class AIAssistant:
         load_dotenv()
         self.client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
         
-        # Fetch ALL available models dynamically
-        self.available_models = []
-        for model in self.client.models.list():
-            if 'gemini' in model.name:
-                self.available_models.append(model.name)
-                
-        if not self.available_models:
-            self.available_models = ['gemini-3.6-flash', 'gemini-1.5-flash', 'gemini-1.5-pro']
+        # FIX: We bypass dynamic fetching to avoid deprecated models.
+        # Hardcoding the explicitly supported 3.6 models prevents the 404 errors.
+        self.available_models = [
+            "gemini-3.6-flash",
+            "gemini-3.6-pro"
+        ]
             
         self.current_model_index = 0
         self.start_new_chat()
 
     def start_new_chat(self):
-        """Creates a new chat session using the currently selected model."""
+        """Creates a new chat session using the currently selected model and tools."""
         if self.current_model_index < len(self.available_models):
             model_name = self.available_models[self.current_model_index]
             self.chat = self.client.chats.create(
                 model=model_name, 
                 config=types.GenerateContentConfig(
-                    tools=[get_current_time] 
+                    # Includes all tools: time, saving memories, and finding objects
+                    tools=[get_current_time, save_memory, find_object] 
                 )
             )
 
-    def ask_question(self, user_text, image_path=None):
-        """Sends a message (and optionally an image), with silent fallback."""
+    def ask_question(self, user_text, image_path=None, audio_path=None):
+        """Sends a message (and optionally an image or audio), with silent fallback."""
         
-        # NEW: Bundle text and image together if an image is provided
-        message_content = user_text
+        # Bundle text, image, and audio together if provided
+        message_content = [user_text]
+        
         if image_path:
             try:
-                # Open the image file from your computer
                 img = Image.open(image_path)
-                # Google's library accepts a list of [Text, Image]
-                message_content = [user_text, img]
+                message_content.append(img)
             except Exception as error:
                 return f"System Error: Could not open the image. {error}"
+                
+        if audio_path:
+            try:
+                print(f"[SYSTEM] Uploading audio file to Gemini: {audio_path}")
+                audio_file = self.client.files.upload(file=audio_path)
+                message_content.append(audio_file)
+            except Exception as error:
+                return f"System Error: Could not upload the audio. {error}"
 
         while self.current_model_index < len(self.available_models):
             try:
-                # Send the message (which might now include an image!)
+                # Send the message (which might now include media!)
                 response = self.chat.send_message(message_content)
                 return response.text
                 
-            except Exception:
+            except Exception as e:
+                print(f"[AI ERROR] {e}. Trying next model...")
                 # Fallback to the next model if it fails
                 self.current_model_index += 1
                 if self.current_model_index < len(self.available_models):
                     self.start_new_chat()
                 
+        # If all models fail, reset back to the primary model for the next attempt
         self.current_model_index = 0
         self.start_new_chat()
         
         return "Servers are a little busy, please wait."
-
-    def start_new_chat(self):
-        """Creates a new chat session using the currently selected model."""
-        if self.current_model_index < len(self.available_models):
-            model_name = self.available_models[self.current_model_index]
-            self.chat = self.client.chats.create(
-                model=model_name, 
-                config=types.GenerateContentConfig(
-                    # Add the new tools to the list
-                    tools=[get_current_time, save_memory, find_object] 
-                )
-            )
 
 # --- TEST BLOCK ---
 if __name__ == "__main__":

@@ -58,7 +58,9 @@ if __name__ == "__main__":
     print("--- ADVANCED MOCK SMART GLASSES ---")
     print("1. Type 'btn' to send a button press.")
     print("2. Type 'img' to snap a REAL photo with your webcam and send it.")
-    print("3. Type 'exit' to quit.")
+    print("3. Type 'start_mtg' to START recording a meeting.")
+    print("4. Type 'stop_mtg' to STOP recording a meeting.")
+    print("5. Type 'exit' to quit.")
     
     while True:
         user_input = input("\n>> ").strip().lower()
@@ -68,5 +70,9 @@ if __name__ == "__main__":
             simulate_button_press()
         elif user_input == 'img':
             capture_real_image()
+        elif user_input == 'start_mtg':
+            send_payload("START_MEETING")
+        elif user_input == 'stop_mtg':
+            send_payload("STOP_MEETING")
         else:
             print("Invalid command.")
