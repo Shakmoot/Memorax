@@ -25,6 +25,17 @@ def main():
 
     def handle_glasses_command(command: str):
         if command == "BUTTON_PRESS":
+            # NEW: Interruption Logic
+            if audio.is_speaking:
+                print("[SYSTEM] Interrupting AI speech...")
+                audio.interrupt()
+                return # Stop executing here; the existing background loop will automatically drop down to listen()!
+                
+            # NEW: Prevent duplicate loops if user spams the button while it's already listening
+            if audio.is_listening:
+                print("[SYSTEM] Already listening for your voice...")
+                return
+
             print("[SYSTEM] Glasses button pressed! Waking up Voice Assistant...")
             audio.speak("Yes?")
             

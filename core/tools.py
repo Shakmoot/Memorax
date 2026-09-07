@@ -1,8 +1,10 @@
 from datetime import datetime
 from database.memory_db import MemoryDatabase
+from database.rag_db import RAGDatabase
 
-# Initialize a global connection to the memory database
+# Initialize global connections to your databases
 memory_db = MemoryDatabase()
+rag_db = RAGDatabase()
 
 def get_current_time() -> str:
     """Returns the current date and time."""
@@ -37,3 +39,13 @@ def find_object(object_name: str) -> str:
     if result:
         return f"I last saw the {result['name']} at {result['location']} on {result['last_seen']}."
     return f"I do not have a memory of where the {object_name} is."
+
+def search_notes(query: str) -> str:
+    """
+    Searches the user's uploaded study notes (PDFs) for information.
+    Use this tool whenever the user asks a question about their studies, coursework, or asks to explain a concept they have notes on.
+    
+    Args:
+        query: The specific question or topic to search for in the notes (e.g., "What is mitochondria?", "Summarize chapter 3").
+    """
+    return rag_db.search_notes(query)
