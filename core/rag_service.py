@@ -121,7 +121,7 @@ if __name__ == "__main__":
     # 2. Ask a question about the PDF
     # (Change this string to a question that actually exists inside your PDF!)
     print("\n--- TESTING PDF KNOWLEDGE ---")
-    question = "what are the limitations of cloud computing?" 
+    question = "what is the advantage of multiple columns in a single page?" 
     print(f"Student: {question}")
     
     answer = rag.ask_student_question(question)
