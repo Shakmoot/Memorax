@@ -4,7 +4,6 @@ from google.genai import types
 from dotenv import load_dotenv
 from PIL import Image
 
-# NEW: Import the set_reminder tool
 from core.tools import get_current_time, save_memory, find_object, search_notes, set_reminder
 
 class AIAssistant:
@@ -12,12 +11,21 @@ class AIAssistant:
         load_dotenv()
         self.client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
         
-        # Lock in the correct 3.6 model to avoid 404 errors
-        self.available_models = [
-            "gemini-3.6-flash"
-        ]
-            
+        self.available_models = ["gemini-3.6-flash"]
         self.current_model_index = 0
+        
+        # NEW: The ReAct System Instruction
+        self.react_prompt = """You are an autonomous AI agent for a smart glasses system. 
+To answer a query, you MUST use the following ReAct format:
+
+Thought: Explain your reasoning and what you need to do next based on the user's request.
+Action: Call a tool if needed. 
+Observation: (The system will automatically execute the tool and provide the result).
+
+You must continue generating Thoughts and Actions until you have completely satisfied the user's request. 
+Once you are ready to speak to the user, you MUST start your final response with exactly:
+Final Answer: [The exact words you want the Text-to-Speech engine to say]"""
+
         self.start_new_chat()
 
     def start_new_chat(self):
@@ -28,13 +36,15 @@ class AIAssistant:
             self.chat = self.client.chats.create(
                 model=model_name, 
                 config=types.GenerateContentConfig(
-                    # Add set_reminder to the AI's toolbelt!
-                    tools=[get_current_time, save_memory, find_object, search_notes, set_reminder] 
+                    system_instruction=self.react_prompt,
+                    # We pass the tools directly; the SDK handles the execution loop automatically!
+                    tools=[get_current_time, save_memory, find_object, search_notes, set_reminder],
+                    temperature=0.3 # Lower temperature keeps the reasoning logical and structured
                 )
             )
 
     def ask_question(self, user_text, image_path=None, audio_path=None):
-        """Sends a message (and optionally an image or audio)."""
+        """Sends a message, processes the ReAct loop, and returns only the final answer."""
         
         message_content = [user_text]
         
@@ -53,18 +63,36 @@ class AIAssistant:
             except Exception as error:
                 return f"System Error: Could not upload the audio. {error}"
 
-        while self.current_model_index < len(self.available_models):
+        # Start the ReAct Parsing Loop
+        max_iterations = 3
+        iteration = 0
+        
+        while iteration < max_iterations:
             try:
+                # Send the message. If the AI calls a tool, the SDK handles the observation cycle.
                 response = self.chat.send_message(message_content)
-                return response.text
                 
+                # Print the AI's internal monologue to the console for debugging
+                print(f"\n[AI INTERNAL THOUGHT]\n{response.text}\n")
+                
+                # Check if the AI has reached a conclusion
+                if "Final Answer:" in response.text:
+                    # Extract only the final words for the TTS engine
+                    final_text = response.text.split("Final Answer:")[-1].strip()
+                    return final_text
+                else:
+                    # If the AI forgot to use the Final Answer tag, gently push it to conclude
+                    message_content = ["You have not provided a final answer. Please conclude with 'Final Answer: [your response]'."]
+                    iteration += 1
+                    
             except Exception as e:
                 print(f"[AI ERROR] {e}. Trying next model...")
                 self.current_model_index += 1
                 if self.current_model_index < len(self.available_models):
                     self.start_new_chat()
-                
-        self.current_model_index = 0
-        self.start_new_chat()
-        
-        return "Servers are a little busy, please wait."
+                else:
+                    self.current_model_index = 0
+                    self.start_new_chat()
+                    return "Servers are a little busy, please wait."
+                    
+        return "I'm sorry, I got stuck thinking and couldn't formulate a final answer."
