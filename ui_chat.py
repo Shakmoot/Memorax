@@ -1,4 +1,5 @@
 import customtkinter as ctk
+import os # We import this to help us easily read file names
 
 # Set the theme to dark mode
 ctk.set_appearance_mode("dark")
@@ -76,11 +77,9 @@ chat_history.insert("0.0", "System: AI Glasses Chat Interface Initialized...\n\n
 chat_history.configure(state="disabled")
 
 # --- TAB 2: MEMORY INSPECTOR ---
-# 1. Create a scrollable frame to hold our memories
 memory_scroll_frame = ctk.CTkScrollableFrame(master=tabview.tab("Memory Inspector"), width=500, height=450)
 memory_scroll_frame.pack(pady=10)
 
-# 2. Create some "dummy" memories to test the UI
 dummy_memories = [
     {"time": "09:15 AM", "text": "Keys left on the kitchen counter."},
     {"time": "10:30 AM", "text": "Meeting with Sarah scheduled for Thursday at 2 PM."},
@@ -88,24 +87,49 @@ dummy_memories = [
     {"time": "04:20 PM", "text": "Remember to buy milk on the way home."}
 ]
 
-# 3. Loop through our dummy memories and create a visual "card" for each one
 for memory in dummy_memories:
-    # Create a small box (frame) for the individual memory
     memory_card = ctk.CTkFrame(master=memory_scroll_frame, fg_color="#2b2b2b", corner_radius=10)
     memory_card.pack(pady=5, fill="x", padx=10)
     
-    # Add the time label
     time_label = ctk.CTkLabel(master=memory_card, text=memory["time"], text_color="gray", font=("Arial", 12))
     time_label.pack(side="left", padx=10, pady=10)
     
-    # Add the memory text label
     text_label = ctk.CTkLabel(master=memory_card, text=memory["text"], font=("Arial", 14), wraplength=350, justify="left")
     text_label.pack(side="left", padx=10, pady=10)
 
+# --- TAB 3: DOCUMENT MANAGER ---
+doc_frame = ctk.CTkFrame(master=tabview.tab("Document Manager"), fg_color="transparent")
+doc_frame.pack(pady=20, fill="both", expand=True)
 
-# --- TAB 3: DOCUMENT MANAGER (Placeholder for now) ---
-doc_label = ctk.CTkLabel(master=tabview.tab("Document Manager"), text="Drag & Drop PDFs here later!", font=("Arial", 18))
-doc_label.pack(pady=50)
+# A visual list to hold our uploaded documents
+doc_list_frame = ctk.CTkScrollableFrame(master=doc_frame, width=450, height=300, label_text="Uploaded Study Materials")
+doc_list_frame.pack(pady=10)
+
+def upload_document():
+    # This opens your computer's file explorer!
+    filepath = ctk.filedialog.askopenfilename(
+        title="Select a PDF",
+        filetypes=[("PDF files", "*.pdf")]
+    )
+    
+    # If the user actually selected a file (and didn't hit cancel)
+    if filepath:
+        # Get just the name of the file (e.g., "homework.pdf")
+        filename = os.path.basename(filepath)
+        
+        # Add a new label to our document list
+        new_doc = ctk.CTkLabel(master=doc_list_frame, text=f"📄 {filename}", font=("Arial", 14))
+        new_doc.pack(anchor="w", pady=5, padx=10)
+        
+        # Add a helpful message to the Live Chat!
+        chat_history.configure(state="normal")
+        chat_history.insert("end", f"System: Document '{filename}' queued for AI Study Mode.\n\n")
+        chat_history.configure(state="disabled")
+        chat_history.see("end")
+
+# The button that triggers the upload function
+upload_button = ctk.CTkButton(master=doc_frame, text="Browse for PDF", command=upload_document, font=("Arial", 14, "bold"))
+upload_button.pack(pady=20)
 
 # Start the application loop
 app.mainloop()
