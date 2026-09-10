@@ -9,34 +9,59 @@ app = ctk.CTk()
 app.title("AI Smart Glasses - Companion App")
 app.geometry("500x600")
 
+# --- NEW: HARDWARE STATUS BAR ---
+# Create an invisible layout frame at the top for our status
+status_frame = ctk.CTkFrame(master=app, fg_color="transparent")
+# fill="x" makes the frame stretch across the whole width of the window
+status_frame.pack(pady=(15, 5), fill="x", padx=25)
+
+# Create the status text and put it on the left side
+status_label = ctk.CTkLabel(master=status_frame, text="🔴 Glasses Disconnected", text_color="red", font=("Arial", 14, "bold"))
+status_label.pack(side="left")
+
+# Create a variable to track if we are connected or not
+is_connected = False
+
+# Function to pretend we are connecting/disconnecting the glasses
+def toggle_connection():
+    global is_connected # This tells Python we want to change the variable we made above
+    is_connected = not is_connected # Flip it (False becomes True, True becomes False)
+    
+    chat_history.configure(state="normal")
+    
+    if is_connected:
+        status_label.configure(text="🟢 Glasses Connected", text_color="#2ecc71") # Green color
+        connect_button.configure(text="Disconnect")
+        chat_history.insert("end", "System: Glasses connected successfully via TCP.\n\n")
+    else:
+        status_label.configure(text="🔴 Glasses Disconnected", text_color="red")
+        connect_button.configure(text="Connect")
+        chat_history.insert("end", "System: Glasses disconnected.\n\n")
+        
+    chat_history.configure(state="disabled")
+    chat_history.see("end")
+
+# Create a button to toggle the connection, and put it on the right side
+connect_button = ctk.CTkButton(master=status_frame, text="Connect", width=80, command=toggle_connection)
+connect_button.pack(side="right")
+# --------------------------------
+
 # Create a text box for the chat history
 chat_history = ctk.CTkTextbox(master=app, width=450, height=400)
-chat_history.pack(pady=20) 
+chat_history.pack(pady=10) 
 
 # Create the dummy function that acts like our AI for now
 def send_message():
-    # Get the text that the user typed into the input box
     user_text = input_box.get()
     
     if user_text.strip() == "":
-        return # Do nothing if the box is empty
+        return 
         
-    # Make sure we can write into the chat history box
     chat_history.configure(state="normal")
-    
-    # Insert the user's message
     chat_history.insert("end", f"You: {user_text}\n\n")
-    
-    # Insert the dummy AI response
     chat_history.insert("end", f"AI: I heard you say '{user_text}'. (Real AI coming later!)\n\n")
-    
-    # Lock the chat history again so the user can't accidentally type inside it
     chat_history.configure(state="disabled")
-    
-    # Scroll to the very bottom of the chat history
     chat_history.see("end")
-    
-    # Clear the input box so it is ready for the next message
     input_box.delete(0, "end")
 
 # Create a layout frame to hold the input box and button side-by-side
@@ -45,15 +70,13 @@ input_frame.pack(pady=10)
 
 # Create the input text box
 input_box = ctk.CTkEntry(master=input_frame, width=350, placeholder_text="Type your message...")
-# Pack it on the left side of our frame
 input_box.pack(side="left", padx=10)
 
 # Create the Send button and tell it to run 'send_message' when clicked
 send_button = ctk.CTkButton(master=input_frame, text="Send", width=80, command=send_message)
-# Pack it on the right side next to the input box
 send_button.pack(side="left")
 
-# Add a dummy message just so we can see it working, then lock it initially
+# Add initial system message
 chat_history.insert("0.0", "System: AI Glasses Chat Interface Initialized...\n\n")
 chat_history.configure(state="disabled")
 
