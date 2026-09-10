@@ -7,7 +7,7 @@ ctk.set_default_color_theme("blue")
 # Create the main window
 app = ctk.CTk()
 app.title("AI Smart Glasses - Companion App")
-app.geometry("600x700") # Made the window slightly bigger for our tabs
+app.geometry("600x700")
 
 # --- HARDWARE STATUS BAR (Always visible at the top) ---
 status_frame = ctk.CTkFrame(master=app, fg_color="transparent")
@@ -39,19 +39,15 @@ def toggle_connection():
 connect_button = ctk.CTkButton(master=status_frame, text="Connect", width=80, command=toggle_connection)
 connect_button.pack(side="right")
 
-# --- NEW: TABVIEW (The main container for our different screens) ---
-# Create the tab container and put it in the main app
+# --- TABVIEW (The main container for our different screens) ---
 tabview = ctk.CTkTabview(master=app, width=550, height=550)
 tabview.pack(pady=10, padx=20)
 
-# Add our three tabs
 tabview.add("Live Chat")
 tabview.add("Memory Inspector")
 tabview.add("Document Manager")
 
 # --- TAB 1: LIVE CHAT ---
-# Notice how the 'master' for these chat items is now the "Live Chat" tab!
-
 chat_history = ctk.CTkTextbox(master=tabview.tab("Live Chat"), width=500, height=400)
 chat_history.pack(pady=10) 
 
@@ -79,9 +75,33 @@ send_button.pack(side="left")
 chat_history.insert("0.0", "System: AI Glasses Chat Interface Initialized...\n\n")
 chat_history.configure(state="disabled")
 
-# --- TAB 2: MEMORY INSPECTOR (Placeholder for now) ---
-memory_label = ctk.CTkLabel(master=tabview.tab("Memory Inspector"), text="Database Memory will go here!", font=("Arial", 18))
-memory_label.pack(pady=50)
+# --- TAB 2: MEMORY INSPECTOR ---
+# 1. Create a scrollable frame to hold our memories
+memory_scroll_frame = ctk.CTkScrollableFrame(master=tabview.tab("Memory Inspector"), width=500, height=450)
+memory_scroll_frame.pack(pady=10)
+
+# 2. Create some "dummy" memories to test the UI
+dummy_memories = [
+    {"time": "09:15 AM", "text": "Keys left on the kitchen counter."},
+    {"time": "10:30 AM", "text": "Meeting with Sarah scheduled for Thursday at 2 PM."},
+    {"time": "01:45 PM", "text": "Spotted a rare bird outside the window."},
+    {"time": "04:20 PM", "text": "Remember to buy milk on the way home."}
+]
+
+# 3. Loop through our dummy memories and create a visual "card" for each one
+for memory in dummy_memories:
+    # Create a small box (frame) for the individual memory
+    memory_card = ctk.CTkFrame(master=memory_scroll_frame, fg_color="#2b2b2b", corner_radius=10)
+    memory_card.pack(pady=5, fill="x", padx=10)
+    
+    # Add the time label
+    time_label = ctk.CTkLabel(master=memory_card, text=memory["time"], text_color="gray", font=("Arial", 12))
+    time_label.pack(side="left", padx=10, pady=10)
+    
+    # Add the memory text label
+    text_label = ctk.CTkLabel(master=memory_card, text=memory["text"], font=("Arial", 14), wraplength=350, justify="left")
+    text_label.pack(side="left", padx=10, pady=10)
+
 
 # --- TAB 3: DOCUMENT MANAGER (Placeholder for now) ---
 doc_label = ctk.CTkLabel(master=tabview.tab("Document Manager"), text="Drag & Drop PDFs here later!", font=("Arial", 18))
