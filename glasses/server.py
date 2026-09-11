@@ -10,7 +10,7 @@ class GlassesServer:
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
     def start(self):
-        self.server_socket.bind(('127.0.0.1', self.port))
+        self.server_socket.bind(('0.0.0.0', self.port))
         self.server_socket.listen(5)
         threading.Thread(target=self._accept_loop, daemon=True).start()
 
