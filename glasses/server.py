@@ -1,12 +1,12 @@
 import socket
 import threading
+import wave
 
 class GlassesServer:
     def __init__(self, port, on_command_callback):
         self.port = port
         self.on_command_callback = on_command_callback
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # Allow address reuse to prevent "Address already in use" errors if you restart quickly
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
     def start(self):
@@ -58,12 +58,35 @@ class GlassesServer:
                 # Trigger the callback in main.py
                 self.on_command_callback("IMAGE_RECEIVED")
                 
-            else:
-                # NEW FIX: Forward all other commands (BUTTON_PRESS, START_MEETING, STOP_MEETING) 
-                # directly to the main.py callback instead of throwing them away!
-                self.on_command_callback(command)
+            elif command == "AUDIO_STREAM":
+                print("[NETWORK] Live audio stream connected. Listening...")
+                
+                # The ESP32 streams raw PCM data until the button is released (socket closed)
+                payload = b""
+                while True:
+                    chunk = client_socket.recv(4096)
+                    if not chunk:
+                        break # Socket closed by ESP32
+                    payload += chunk
+                    
+                print(f"[NETWORK] Audio stream ended. Received {len(payload)} bytes.")
+                
+                # Convert the raw 16-bit, 16kHz, Mono PCM bytes into a standard WAV file
+                wav_filename = "glasses_voice_query.wav"
+                with wave.open(wav_filename, 'wb') as wf:
+                    wf.setnchannels(1)          # Mono
+                    wf.setsampwidth(2)          # 16-bit (2 bytes per sample)
+                    wf.setframerate(16000)      # 16 kHz
+                    wf.writeframes(payload)
+                    
+                # Trigger the callback in main.py to process the voice
+                self.on_command_callback("VOICE_AUDIO_RECEIVED")
 
+            else:
+                # Forward all other commands (BUTTON_PRESS, START_MEETING, STOP_MEETING)
+                self.on_command_callback(command)
+                
         except Exception as e:
-            print(f"[NETWORK ERROR] {e}")
+            print(f"[NETWORK] Error handling client {addr}: {e}")
         finally:
             client_socket.close()
