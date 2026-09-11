@@ -10,3 +10,5 @@ pypdf
 pyaudio
 pdfplumber
 requests
+flet
+customtkinter
