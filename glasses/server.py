@@ -71,27 +71,50 @@ class GlassesServer:
                 else:
                     print("[NETWORK] Error: Received 0 bytes for image.")
 
-            elif command == "AUDIO_STREAM":
-                # Read the incoming audio bytes until the glasses close the connection
+            elif command == "AUDIO_STREAM_V2":
                 payload = bytearray()
-                print("[NETWORK] Incoming Audio Stream...")
+                print("[NETWORK] Incoming Chunked Audio Stream...")
                 
                 try:
                     while True:
-                        chunk = client_socket.recv(4096)
-                        if not chunk:
+                        # 1. Read the chunk header (e.g., "CHUNK:2048\n" or "END\n")
+                        header_data = b""
+                        while b"\n" not in header_data:
+                            char = client_socket.recv(1)
+                            if not char:
+                                break
+                            header_data += char
+                            
+                        if not header_data:
+                            print("[NETWORK] Connection dropped during stream.")
                             break
-                        payload += chunk
+                            
+                        header_str = header_data.decode('utf-8').strip()
+                        
+                        # 2. Check if the glasses are done sending
+                        if header_str == "END":
+                            print("[NETWORK] Audio stream gracefully finished.")
+                            break
+                            
+                        # 3. If it's a chunk, read exactly that many bytes
+                        if header_str.startswith("CHUNK:"):
+                            chunk_length = int(header_str.split(":")[1])
+                            bytes_received = 0
+                            
+                            while bytes_received < chunk_length:
+                                chunk = client_socket.recv(min(4096, chunk_length - bytes_received))
+                                if not chunk:
+                                    break
+                                payload.extend(chunk)
+                                bytes_received += len(chunk)
+                                
                 except Exception as stream_err:
                      print(f"[NETWORK] Warning: Audio stream interrupted: {stream_err}")
                     
-                print(f"[NETWORK] Audio stream ended. Received {len(payload)} bytes.")
+                print(f"[NETWORK] Audio stream ended. Total received: {len(payload)} bytes.")
                 
-                # Only process if we actually received a decent amount of audio data
-                # 16kHz, 16-bit mono = 32,000 bytes per second.
-                # Let's require at least 0.5 seconds of audio (16,000 bytes) to process.
+                # Process if we received enough data (> 0.5 seconds)
                 if len(payload) > 16000:
-                    # Convert the raw 16-bit, 16kHz, Mono PCM bytes into a standard WAV file
                     wav_filename = "glasses_voice_query.wav"
                     try:
                         with wave.open(wav_filename, 'wb') as wf:
@@ -100,7 +123,6 @@ class GlassesServer:
                             wf.setframerate(16000)      # 16 kHz
                             wf.writeframes(payload)
                         print(f"[NETWORK] Saved {wav_filename} successfully.")
-                        # Trigger the callback in main.py to process the voice
                         self.on_command_callback("VOICE_AUDIO_RECEIVED")
                     except Exception as wave_err:
                         print(f"[NETWORK] Failed to save WAV file: {wave_err}")

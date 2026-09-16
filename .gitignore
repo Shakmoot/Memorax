@@ -2,3 +2,6 @@
 __pycache__/
 *.db
 local_vector_db/
+glasses_voice_query.wav
+latest_capture.jpg
+latest_meeting.wav
