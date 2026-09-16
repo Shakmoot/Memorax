@@ -12,3 +12,4 @@ pdfplumber
 requests
 flet
 customtkinter
+openai
