@@ -2,11 +2,12 @@ import os
 from dotenv import load_dotenv
 
 from core.orchestrator import AIAssistant
-from ui.app import start_ui
+from ui.app import CompanionApp
 from glasses.server import GlassesServer
 from core.audio_service import AudioService
 from core.tools import reminder_service
 import time
+import threading
 
 def main():
     print("[SYSTEM] Loading environment variables...")
@@ -21,6 +22,7 @@ def main():
     # NEW: Setup Proactive Reminder Callback
     def on_proactive_reminder(message):
         print(f"\n[PROACTIVE ALERT] {message}")
+        if app: app.append_chat("System Alert", message)
         # Wait gently if the AI is already in the middle of saying something else
         while audio.is_speaking:
             time.sleep(1)
@@ -30,12 +32,37 @@ def main():
     reminder_service.start()
     print("[SYSTEM] Background Reminder Engine Started.")
 
-    def handle_ui_message(message_text: str) -> str:
+    # Forward declare app so our functions can push text to the UI
+    app = None
+
+    def handle_ui_message(message_text: str):
         print(f"[DEBUG] User typed: {message_text}")
-        try:
-            return assistant.ask_question(message_text)
-        except Exception as e:
-            return f"Error communicating with AI: {str(e)}"
+        # Run AI in a background thread so the UI doesn't freeze while waiting for Gemini
+        def process_ai():
+            try:
+                response = assistant.ask_question(message_text)
+                if app: app.append_chat("AI", response)
+                audio.speak(response)
+            except Exception as e:
+                if app: app.append_chat("System Error", str(e))
+        threading.Thread(target=process_ai, daemon=True).start()
+
+    def handle_wake_clicked():
+        # Clicking the UI button simulates a hardware button press!
+        handle_glasses_command("BUTTON_PRESS")
+
+    def handle_meeting_toggled(is_on: bool):
+        if is_on:
+            handle_glasses_command("START_MEETING")
+        else:
+            handle_glasses_command("STOP_MEETING")
+
+    def handle_document_upload(filepath: str):
+        # We simulate the ingestion process. In a full build, this hooks to rag_db.ingest_pdf
+        def process_upload():
+            time.sleep(2) # Simulating processing time
+            if app: app.append_chat("System", "Document ingested and ready for RAG search.")
+        threading.Thread(target=process_upload, daemon=True).start()
 
     def handle_glasses_command(command: str):
         if command == "BUTTON_PRESS":
@@ -66,16 +93,20 @@ def main():
                 
                 if "goodbye" in user_speech.lower() or "stop" in user_speech.lower():
                     print("[SYSTEM] User ended conversation.")
+                    if app: app.append_chat("System", "Conversation ended.")
                     audio.speak("Goodbye.")
                     conversation_active = False
                     continue
 
+                if app: app.append_chat("You (Voice)", user_speech)
                 ai_response = assistant.ask_question(user_speech)
                 print(f"\n>>> AI RESPONSE: {ai_response} <<<\n")
+                if app: app.append_chat("AI", ai_response)
                 audio.speak(ai_response)
                 
         elif command == "IMAGE_RECEIVED":
             print("[SYSTEM] Image received from glasses. Sending to AI for analysis...")
+            if app: app.append_chat("System", "Image received. Analyzing...")
             audio.speak("Analyzing image...")
             
             ai_response = assistant.ask_question(
@@ -83,15 +114,34 @@ def main():
                 image_path="latest_capture.jpg"
             )
             print(f"\n>>> AI VISION RESULT: {ai_response} <<<\n")
+            if app: app.append_chat("AI Vision", ai_response)
+            audio.speak(ai_response)
+
+        elif command == "VOICE_AUDIO_RECEIVED":
+            print("[SYSTEM] Voice query received from glasses. Sending to Gemini...")
+            if app: app.append_chat("System", "Audio stream received. Processing...")
+            audio.speak("Thinking...")
+            
+            # Pass the saved WAV file directly to Gemini
+            audio_file_path = "glasses_voice_query.wav"
+            ai_response = assistant.ask_question(
+                user_text="Please answer my spoken question.", 
+                audio_path=audio_file_path
+            )
+            
+            print(f"\n>>> AI RESPONSE: {ai_response} <<<\n")
+            if app: app.append_chat("AI", ai_response)
             audio.speak(ai_response)
 
         elif command == "START_MEETING":
             print("[SYSTEM] Glasses requested meeting start.")
+            if app: app.append_chat("System", "Meeting recording started.")
             audio.speak("Starting meeting recording.")
             audio.start_meeting_recording()
 
         elif command == "STOP_MEETING":
             print("[SYSTEM] Glasses requested meeting stop.")
+            if app: app.append_chat("System", "Meeting stopped. Summarizing...")
             audio.speak("Stopping meeting recording. Please wait while I analyze the audio.")
             audio_file_path = audio.stop_meeting_recording()
             
@@ -106,6 +156,7 @@ def main():
                 
                 ai_response = assistant.ask_question(user_text=prompt, audio_path=audio_file_path)
                 print(f"\n>>> MEETING SUMMARY: {ai_response} <<<\n")
+                if app: app.append_chat("Meeting Summary", ai_response)
                 audio.speak("Meeting summarized and saved to memory.")
 
     print("[SYSTEM] Starting Glasses Network Server...")
@@ -113,8 +164,15 @@ def main():
     glasses_server.start()
 
     print("[SYSTEM] Starting User Interface...")
-    # This blocks the main thread and runs the UI window
-    start_ui(on_message_callback=handle_ui_message)
+    # Initialize and run the new CustomTkinter App
+    app = CompanionApp(
+        on_message=handle_ui_message,
+        on_wake=handle_wake_clicked,
+        on_meeting=handle_meeting_toggled,
+        on_upload=handle_document_upload
+    )
+    # This keeps the application window running
+    app.mainloop()
 
 if __name__ == "__main__":
     main()
