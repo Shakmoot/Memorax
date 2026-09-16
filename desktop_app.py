@@ -1,6 +1,9 @@
 import customtkinter as ctk
 import threading
 import time
+import socket
+import json
+import config
 
 # Set the overall appearance to dark mode and color theme to blue
 ctk.set_appearance_mode("dark")
@@ -95,12 +98,41 @@ def send_message():
 def get_ai_response(user_text):
     # This function runs in the background! The UI will NOT freeze.
     
-    # Simulate network delay (the AI thinking for 2 seconds)
-    time.sleep(2)
+    try:
+        # 1. Create a socket (a digital telephone)
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        
+        # 2. Try to dial the backend server using the details from config.py
+        client_socket.connect((config.SERVER_HOST, config.SERVER_PORT))
+        
+        # 3. Format our message as JSON (a standard way computers talk to each other)
+        # We tell the server this is a "chat" command
+        message_data = json.dumps({"command": "chat", "text": user_text})
+        
+        # 4. Send the message over the socket
+        client_socket.sendall(message_data.encode('utf-8'))
+        
+        # 5. Wait for the AI's response (up to 4096 bytes of data)
+        response_data = client_socket.recv(4096).decode('utf-8')
+        
+        # 6. Parse the JSON response back into a Python dictionary
+        response_dict = json.loads(response_data)
+        ai_text = response_dict.get("response", "Error: No response field from server.")
+        
+        # 7. Hang up the phone
+        client_socket.close()
+
+    except ConnectionRefusedError:
+        # This happens if the backend server isn't running yet!
+        ai_text = "⚠️ Connection Failed: Make sure the AI Backend server is running."
+    except Exception as e:
+        # Catch any other weird network errors
+        ai_text = f"⚠️ Network Error: {str(e)}"
+
     
-    # The AI has finished thinking, now update the UI with the answer
+    # Update the UI with the final answer (either the real AI or the error message)
     chat_history_box.configure(state="normal")
-    chat_history_box.insert("end", f"AI: This is a threaded background response to '{user_text}'\n\n")
+    chat_history_box.insert("end", f"AI: {ai_text}\n\n")
     chat_history_box.see("end")
     chat_history_box.configure(state="disabled")
 
