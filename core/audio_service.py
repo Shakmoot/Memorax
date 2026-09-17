@@ -121,39 +121,14 @@ class AudioService:
                 print(f"[WAKE-DEBUG] Microphone Error: {e}")
                 time.sleep(0.5) # Prevent CPU spam on network/mic errors
 
-    def speak(self, text: str):
-        """Reads the provided text out loud in a thread-safe way, with interruption support."""
-        print(f"[AUDIO] Speaking: {text}")
-        self.is_speaking = True
-        self.stop_requested = False
-        
-        try:
-            # Initialize the engine locally on the current thread
-            engine = pyttsx3.init()
-            rate = engine.getProperty('rate')
-            engine.setProperty('rate', rate - 20)
-            
-            def on_word(name, location, length):
-                if self.stop_requested:
-                    print("[AUDIO] Speech interrupted by user.")
-                    engine.stop()
-                    
-            engine.connect('started-word', on_word)
-            
-            engine.say(text)
-            engine.runAndWait()
-        except Exception as e:
-            print(f"[AUDIO FATAL ERROR during speech] {e}")
-        finally:
-            self.is_speaking = False
-
-    def interrupt(self):
-        """Signals the TTS engine to stop speaking immediately."""
-        if self.is_speaking:
-            self.stop_requested = True
-
     def listen(self) -> str:
         """Listens to the default microphone and returns the transcribed text."""
+        
+        # NEW: Wait for the AI to finish talking before we start recording!
+        # This prevents the microphone from accidentally recording the AI saying "Yes?"
+        while self.is_speaking or not self.tts_queue.empty():
+            time.sleep(0.1)
+            
         self.is_listening = True
         try:
             # FIX: Removed device_index=1 to automatically use your default microphone here too
@@ -182,6 +157,25 @@ class AudioService:
             return ""
         except Exception as e:
             print(f"[AUDIO FATAL ERROR during listening] {e}")
+            return ""
+        finally:
+            self.is_listening = False
+
+    def transcribe_wav(self, wav_path: str) -> str:
+        """Transcribes a saved audio file (from the ESP32 glasses) into text."""
+        self.is_listening = True
+        try:
+            with sr.AudioFile(wav_path) as source:
+                print(f"\n[AUDIO] Transcribing incoming audio from glasses...")
+                audio_data = self.recognizer.record(source)
+                text = self.recognizer.recognize_google(audio_data)
+                print(f"[AUDIO] You (via Glasses) said: '{text}'")
+                return text
+        except sr.UnknownValueError:
+            print("[AUDIO] Sorry, I couldn't understand the audio from the glasses.")
+            return ""
+        except Exception as e:
+            print(f"[AUDIO] Error transcribing WAV: {e}")
             return ""
         finally:
             self.is_listening = False

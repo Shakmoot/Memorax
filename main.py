@@ -118,20 +118,31 @@ def main():
             audio.speak(ai_response)
 
         elif command == "VOICE_AUDIO_RECEIVED":
-            print("[SYSTEM] Voice query received from glasses. Sending to Gemini...")
-            if app: app.append_chat("System", "Audio stream received. Processing...")
-            audio.speak("Thinking...")
+            print("[SYSTEM] Audio stream received from glasses. Processing...")
             
-            # Pass the saved WAV file directly to Gemini
+            # 1. Transcribe the saved WAV file from the glasses
             audio_file_path = "glasses_voice_query.wav"
-            ai_response = assistant.ask_question(
-                user_text="Please answer my spoken question.", 
-                audio_path=audio_file_path
-            )
+            user_speech = audio.transcribe_wav(audio_file_path)
             
-            print(f"\n>>> AI RESPONSE: {ai_response} <<<\n")
-            if app: app.append_chat("AI", ai_response)
-            audio.speak(ai_response)
+            if user_speech:
+                print(f"[HARDWARE MIC] Transcribed: '{user_speech}'")
+                
+                # 2. Check if the Edge stream actually contained the wake word!
+                if "jarvis" in user_speech.lower():
+                    if app: app.append_chat("You (Glasses)", user_speech)
+                    audio.speak("Thinking...")
+                    
+                    # 3. Pass the transcribed text to the ReAct Orchestrator
+                    ai_response = assistant.ask_question(user_speech)
+                    
+                    print(f"\n>>> AI RESPONSE: {ai_response} <<<\n")
+                    if app: app.append_chat("AI", ai_response)
+                    audio.speak(ai_response)
+                else:
+                    # Ignore background chatter, doors slamming, or people talking to someone else
+                    print("[SYSTEM] Wake word 'Jarvis' not detected. Ignoring background noise.")
+            else:
+                print("[SYSTEM] Audio contained only noise. Ignored.")
 
         elif command == "START_MEETING":
             print("[SYSTEM] Glasses requested meeting start.")
