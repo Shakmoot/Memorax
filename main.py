@@ -77,7 +77,7 @@ def main():
                 print("[SYSTEM] Already listening for your voice...")
                 return
 
-            print("[SYSTEM] Glasses button pressed! Waking up Voice Assistant...")
+            print("[SYSTEM] Jarvis activated! Waking up Voice Assistant...")
             audio.speak("Yes?")
             
             conversation_active = True
@@ -158,6 +158,10 @@ def main():
                 print(f"\n>>> MEETING SUMMARY: {ai_response} <<<\n")
                 if app: app.append_chat("Meeting Summary", ai_response)
                 audio.speak("Meeting summarized and saved to memory.")
+
+    # NEW: Start the Wake Word Listener
+    print("[SYSTEM] Starting Wake Word Engine...")
+    audio.start_wake_word_listener(handle_wake_clicked)
 
     print("[SYSTEM] Starting Glasses Network Server...")
     glasses_server = GlassesServer(port=65432, on_command_callback=handle_glasses_command)

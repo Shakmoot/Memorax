@@ -3,11 +3,15 @@ import pyttsx3
 import pyaudio
 import wave
 import threading
+import time
 
 class AudioService:
     def __init__(self):
-        # We no longer initialize pyttsx3 here to avoid Windows threading crashes
         self.recognizer = sr.Recognizer()
+        
+        # NEW: Increase the silence threshold. 
+        # It will now wait for 1.5 seconds of silence before assuming you are done talking.
+        self.recognizer.pause_threshold = 1.5 
         
         # Variables for continuous meeting recording
         self.is_recording = False
@@ -15,10 +19,58 @@ class AudioService:
         self.recording_thread = None
         self.meeting_filename = "latest_meeting.wav"
         
-        # NEW: Interruption and State flags
+        # Interruption and State flags
         self.is_speaking = False
         self.stop_requested = False
         self.is_listening = False
+        self.wake_word_active = False
+
+    def start_wake_word_listener(self, wake_callback):
+        """Starts a background thread to listen for the wake word."""
+        if not self.wake_word_active:
+            self.wake_callback = wake_callback
+            self.wake_word_active = True
+            threading.Thread(target=self._wake_word_loop, daemon=True).start()
+            print("[AUDIO] Wake word engine active. Say 'Hey Jarvis' to wake me up.")
+
+    def _wake_word_loop(self):
+        """Background loop continuously scanning for the wake word."""
+        wake_recognizer = sr.Recognizer()
+        
+        while self.wake_word_active:
+            # If the AI is already talking, recording a meeting, or listening to a query, pause the wake word!
+            if self.is_listening or self.is_speaking or self.is_recording:
+                time.sleep(1)
+                continue
+            
+            try:
+                # We open the mic just long enough to grab a snippet of sound
+                # FIX: Removed device_index=1 to automatically use your default microphone
+                with sr.Microphone() as source:
+                    wake_recognizer.adjust_for_ambient_noise(source, duration=0.2)
+                    audio = wake_recognizer.listen(source, timeout=1, phrase_time_limit=2)
+                
+                # Process the snippet AFTER releasing the mic so the main thread can use it if needed
+                text = wake_recognizer.recognize_google(audio).lower()
+                
+                # FIX: Print everything it hears so you can verify the mic is working!
+                print(f"[WAKE-DEBUG] I heard: '{text}'") 
+                
+                # FIX: Updated wake words to Jarvis
+                if "hey jarvis" in text or "jarvis" in text or "wake up" in text:
+                    print(f"\n[WAKE WORD DETECTED] Heard: '{text}'")
+                    if self.wake_callback:
+                        self.wake_callback()
+                        # Sleep briefly to give the main thread time to take control of the microphone
+                        time.sleep(3)
+                        
+            except sr.WaitTimeoutError:
+                pass # Normal, nobody spoke
+            except sr.UnknownValueError:
+                pass # Heard noise, but no recognizable words
+            except Exception as e:
+                print(f"[WAKE-DEBUG] Microphone Error: {e}")
+                time.sleep(0.5) # Prevent CPU spam on network/mic errors
 
     def speak(self, text: str):
         """Reads the provided text out loud in a thread-safe way, with interruption support."""
@@ -32,7 +84,6 @@ class AudioService:
             rate = engine.getProperty('rate')
             engine.setProperty('rate', rate - 20)
             
-            # NEW: Setup an event callback to check for interruptions before every word
             def on_word(name, location, length):
                 if self.stop_requested:
                     print("[AUDIO] Speech interrupted by user.")
@@ -56,13 +107,15 @@ class AudioService:
         """Listens to the default microphone and returns the transcribed text."""
         self.is_listening = True
         try:
-            # Using device_index=1 based on your hardware list
-            with sr.Microphone(device_index=1) as source:
+            # FIX: Removed device_index=1 to automatically use your default microphone here too
+            with sr.Microphone() as source:
                 print("\n[AUDIO] Calibrating to background noise... Please wait 1 second.")
                 self.recognizer.adjust_for_ambient_noise(source, duration=1)
                 
-                print("[AUDIO] Listening! Speak now...")
-                audio_data = self.recognizer.listen(source, timeout=5, phrase_time_limit=10)
+                print("[AUDIO] Listening! Speak now... (I will listen until you stop talking)")
+                
+                # NEW: Removed phrase_time_limit. It will now record until it detects silence.
+                audio_data = self.recognizer.listen(source, timeout=5)
                 
                 print("[AUDIO] Processing speech...")
                 text = self.recognizer.recognize_google(audio_data)
@@ -84,10 +137,6 @@ class AudioService:
         finally:
             self.is_listening = False
 
-    # ---------------------------------------------------------
-    # NEW: CONTINUOUS MEETING RECORDING METHODS
-    # ---------------------------------------------------------
-    
     def start_meeting_recording(self):
         """Starts recording audio continuously in the background."""
         if self.is_recording:
@@ -97,7 +146,6 @@ class AudioService:
         self.is_recording = True
         self.frames = []
         
-        # Start the recording loop on a background thread so the app doesn't freeze
         self.recording_thread = threading.Thread(target=self._record_loop, daemon=True)
         self.recording_thread.start()
         print("[AUDIO] Meeting recording STARTED. Background thread running...")
@@ -115,12 +163,10 @@ class AudioService:
         try:
             print(f"[AUDIO-DEBUG] Attempting to open audio stream on Mic Index 1...")
             try:
-                # First attempt: Index 1 at 44.1kHz
                 stream = p.open(format=audio_format, channels=channels, rate=rate, 
                                 input=True, input_device_index=1, frames_per_buffer=chunk)
             except Exception as stream_err:
-                print(f"[AUDIO-DEBUG] Failed to open Index 1. Trying default Windows settings... Error: {stream_err}")
-                # Fallback: Let PyAudio choose the default microphone and use 48kHz
+                print(f"[AUDIO-DEBUG] Failed to open Index 1. Trying default... Error: {stream_err}")
                 rate = 48000
                 stream = p.open(format=audio_format, channels=channels, rate=rate, 
                                 input=True, frames_per_buffer=chunk)
@@ -141,7 +187,6 @@ class AudioService:
                 stream.close()
             p.terminate()
             
-            # Ensure we save whatever frames we got before the crash
             if len(self.frames) > 0:
                 wf = wave.open(self.meeting_filename, 'wb')
                 wf.setnchannels(channels)
@@ -161,7 +206,6 @@ class AudioService:
         print("[AUDIO] Stopping meeting recording... Saving file...")
         self.is_recording = False
         
-        # Wait for the background thread to finish writing the file
         if self.recording_thread:
             self.recording_thread.join()
             
