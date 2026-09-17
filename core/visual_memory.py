@@ -3,49 +3,83 @@ import os
 from core.orchestrator import AIAssistant
 from core.tools import save_memory
 
+
+import base64
+from openai import OpenAI
+from dotenv import load_dotenv
+
 class VisualMemoryService:
     def __init__(self, ai_assistant: AIAssistant):
         self.assistant = ai_assistant
 
-    def extract_visual_entities(self, image_path: str):
-        """
-        Analyzes a photo and extracts key everyday objects and their spatial context.
-        Returns a list of dicts: [{'object': 'keys', 'location': 'wooden desk next to laptop'}]
-        """
-        if not os.path.exists(image_path):
-            return {"error": f"Image file not found at {image_path}"}
+    def _encode_image(self, image_path):
+        """Helper to convert images to Base64 for NVIDIA's API."""
+        with open(image_path, "rb") as image_file:
+            return base64.b64encode(image_file.read()).decode("utf-8")
 
-        prompt = """
-        Analyze this image taken from smart glasses. 
-        Identify any distinct everyday items (e.g., keys, wallet, phone, notebook, water bottle, glasses, backpack, chargers).
-        For each item, describe its precise location relative to nearby furniture or landmarks.
-
-        Return STRICT raw JSON (no markdown formatting, no backticks, no extra text) as a list of objects:
-        [
-          {
-            "object": "name of object",
-            "location": "concise description of where it is resting or located"
-          }
-        ]
-        If no distinct portable items are clearly visible, return an empty list: []
-        """
-
+    def extract_visual_entities(self, image_path):
+        import requests 
+        import os
+        from dotenv import load_dotenv
+        
+        prompt = "List the main objects you see in this image and their exact locations. Format as: 'object name -> location description'"
+        
+        # 1. Try Gemini First
         raw_response = self.assistant.ask_question(prompt, image_path=image_path)
         
-        # Clean up potential markdown formatting if the model adds ```json ... ```
-        cleaned = raw_response.strip()
-        if cleaned.startswith("```"):
-            cleaned = cleaned.split("\n", 1)[-1]
-            if cleaned.endswith("```"):
-                cleaned = cleaned.rsplit("\n", 1)[0]
-        cleaned = cleaned.strip()
+        # 2. The Tripwire: If Gemini is rate-limited, switch to NVIDIA NIM
+        if "Servers are a little busy" in raw_response or "System Error" in raw_response:
+            print("[Visual Memory] Gemini API limit reached! Rerouting to NVIDIA NIM...")
+            
+            load_dotenv()
+            api_key = os.getenv("NVIDIA_API_KEY")
+            base64_image = self._encode_image(image_path)
+            
+            try:
+                # Direct REST call
+                url = "https://integrate.api.nvidia.com/v1/chat/completions"
+                headers = {
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json"
+                }
+                payload = {
+                    "model": "google/paligemma", # Update this if the NVIDIA API Reference tab showed a different string
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt},
+                                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                            ]
+                        }
+                    ],
+                    "max_tokens": 256,
+                    "temperature": 0.2
+                }
+                
+                response = requests.post(url, headers=headers, json=payload)
+                
+                if response.status_code == 200:
+                    raw_response = response.json()["choices"][0]["message"]["content"]
+                else:
+                    print(f"[Visual Memory] NVIDIA failed with status {response.status_code}: {response.text}")
+                    raw_response = ""
+                    
+            except Exception as e:
+                print(f"[Visual Memory] NVIDIA request failed: {e}")
+                raw_response = ""
 
-        try:
-            items = json.loads(cleaned)
-            return items if isinstance(items, list) else []
-        except json.JSONDecodeError:
-            print(f"[Warning] Failed to parse JSON from visual response: {raw_response}")
-            return []
+        # --- THE FIX: Parse the raw string into a list of dictionaries ---
+        parsed_items = []
+        if raw_response:
+            for line in raw_response.split('\n'):
+                if '->' in line:
+                    parts = line.split('->')
+                    obj_name = parts[0].strip()
+                    loc_desc = parts[1].strip()
+                    parsed_items.append({"object": obj_name, "location": loc_desc})
+                    
+        return parsed_items
 
     def process_camera_snapshot(self, image_path: str, memory_callback=None):
         """
