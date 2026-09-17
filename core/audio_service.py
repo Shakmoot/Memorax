@@ -3,14 +3,12 @@ import pyttsx3
 import pyaudio
 import wave
 import threading
+import queue # NEW: Import the queue library
 import time
 
 class AudioService:
     def __init__(self):
         self.recognizer = sr.Recognizer()
-        
-        # NEW: Increase the silence threshold. 
-        # It will now wait for 1.5 seconds of silence before assuming you are done talking.
         self.recognizer.pause_threshold = 1.5 
         
         # Variables for continuous meeting recording
@@ -24,6 +22,57 @@ class AudioService:
         self.stop_requested = False
         self.is_listening = False
         self.wake_word_active = False
+
+        # NEW: The Dedicated TTS Queue and Thread
+        self.tts_queue = queue.Queue()
+        self.tts_thread = threading.Thread(target=self._tts_worker, daemon=True)
+        self.tts_thread.start()
+
+    # NEW: The dedicated worker thread that handles ALL speech safely
+    def _tts_worker(self):
+        """This runs forever in the background, waiting for text to speak."""
+        # Initialize the engine EXACTLY ONCE on this specific thread to prevent lockups
+        engine = pyttsx3.init()
+        rate = engine.getProperty('rate')
+        engine.setProperty('rate', rate - 20)
+        
+        def on_word(name, location, length):
+            if self.stop_requested:
+                engine.stop()
+                
+        engine.connect('started-word', on_word)
+        
+        while True:
+            # Wait until there is text in the queue
+            text = self.tts_queue.get()
+            if text is None: break
+            
+            self.is_speaking = True
+            try:
+                engine.say(text)
+                engine.runAndWait()
+            except Exception as e:
+                print(f"[AUDIO FATAL ERROR] TTS Engine crashed: {e}")
+            finally:
+                self.is_speaking = False
+                self.tts_queue.task_done()
+
+    def speak(self, text: str):
+        """Adds text to the queue instead of trying to speak it directly."""
+        print(f"[AUDIO] Speaking: {text}")
+        self.stop_requested = False
+        self.tts_queue.put(text)
+
+    def interrupt(self):
+        """Signals the TTS engine to stop speaking immediately."""
+        self.stop_requested = True
+        # Clear any remaining queued sentences
+        while not self.tts_queue.empty():
+            try:
+                self.tts_queue.get_nowait()
+                self.tts_queue.task_done()
+            except queue.Empty:
+                break
 
     def start_wake_word_listener(self, wake_callback):
         """Starts a background thread to listen for the wake word."""
