@@ -1,6 +1,7 @@
 import json
 import os
 from core.orchestrator import AIAssistant
+from core.tools import save_memory
 
 class VisualMemoryService:
     def __init__(self, ai_assistant: AIAssistant):
@@ -29,7 +30,7 @@ class VisualMemoryService:
         If no distinct portable items are clearly visible, return an empty list: []
         """
 
-        raw_response = self.assistant.ask_question(prompt, media_path=image_path)
+        raw_response = self.assistant.ask_question(prompt, image_path=image_path)
         
         # Clean up potential markdown formatting if the model adds ```json ... ```
         cleaned = raw_response.strip()
@@ -67,7 +68,8 @@ class VisualMemoryService:
 
             # If the team's SQLite save function is passed in, call it directly:
             if memory_callback and callable(memory_callback):
-                memory_callback(object_name=obj, location=loc)
+                # Pass a descriptive string to satisfy the tool's requirements!
+                memory_callback(object_name=obj, location=loc, description=f"Automatically spotted {obj} at {loc}")
 
         return detected_items
 
@@ -86,6 +88,6 @@ if __name__ == "__main__":
         def mock_save_memory(object_name, location):
             print(f"  [Mock DB] Saved to SQLite: '{object_name}' at '{location}'")
 
-        service.process_camera_snapshot(test_image, memory_callback=mock_save_memory)
+        service.process_camera_snapshot(test_image, memory_callback=save_memory)
     else:
         print(f"To test: Place a photo with a few objects (phone, keys, cup) at '{test_image}' and re-run.")
