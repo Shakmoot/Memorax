@@ -14,6 +14,15 @@ class RAGDatabase:
             print(f"[RAG ERROR] Could not find the file {pdf_path}")
             return False
 
+        # --- THE FIX: Wipe the old database context ---
+        print("[RAG] Clearing old notes from the database...")
+        try:
+            self.client.delete_collection("student_notes")
+            self.collection = self.client.get_or_create_collection(name="student_notes")
+        except Exception as e:
+            print(f"[RAG WARNING] Could not clear old collection: {e}")
+        # ----------------------------------------------
+
         print(f"[RAG] Reading PDF using pdfplumber: {pdf_path}...")
         
         full_text = ""

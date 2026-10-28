@@ -28,7 +28,7 @@ class VisionService:
         if not self.assistant:
             raise Exception("Gemini Assistant not connected.")
             
-        result = self.assistant.ask_question(prompt, media_path=image_path)
+        result = self.assistant.ask_question(prompt, image_path=image_path)
         
         # If your Orchestrator hits a rate limit, it returns this string.
         # We catch it and throw an error so the failover system triggers.
