@@ -13,3 +13,4 @@ requests
 flet
 customtkinter
 openai
+ddgs

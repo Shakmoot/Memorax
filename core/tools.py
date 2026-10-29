@@ -2,6 +2,7 @@ from datetime import datetime
 from database.memory_db import MemoryDatabase
 from database.rag_db import RAGDatabase
 from core.reminder_service import ReminderService
+from ddgs import DDGS
 
 # Initialize global connections to your databases and services
 memory_db = MemoryDatabase()
@@ -45,7 +46,9 @@ def find_object(object_name: str) -> str:
 def search_notes(query: str) -> str:
     """
     Searches the user's uploaded study notes (PDFs) for information.
-    Use this tool whenever the user asks a question about their studies, coursework, or asks to explain a concept they have notes on.
+    
+    CRITICAL INSTRUCTION: ONLY use this tool if the user EXPLICITLY asks you to search their "notes", "pdf", "document", "upload", or specifically asks about their study materials. 
+    DO NOT use this tool for general knowledge questions, casual conversation, or if the user is just asking a standard question (e.g. "What is the capital of France?"). Answer general questions directly from your own knowledge.
     
     Args:
         query: The specific question or topic to search for in the notes (e.g., "What is mitochondria?", "Summarize chapter 3").
@@ -64,3 +67,23 @@ def set_reminder(minutes: float, reminder_message: str) -> str:
     delay_seconds = minutes * 60
     reminder_service.add_reminder(delay_seconds, reminder_message)
     return f"Reminder set successfully for {minutes} minutes from now."
+
+
+def live_internet_search(query: str) -> str:
+    """
+    Searches the live internet for current events, real-world facts, news, and politicians.
+    Use this tool whenever the user asks for up-to-date factual information.
+    
+    Args:
+        query: The search query to look up (e.g., 'Who is the CM of Kerala 2026?').
+    """
+    print(f"[TOOLS] Searching the live internet for: {query}")
+    try:
+        results = DDGS().text(query, max_results=3)
+        if not results:
+            return "No recent information found on the internet."
+            
+        formatted_results = "\n".join([f"- {r['title']}: {r['body']}" for r in results])
+        return f"Here is the latest live information from the internet:\n{formatted_results}"
+    except Exception as e:
+        return f"Internet search failed: {e}"

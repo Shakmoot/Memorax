@@ -59,9 +59,16 @@ class AudioService:
 
     def speak(self, text: str):
         """Adds text to the queue instead of trying to speak it directly."""
-        print(f"[AUDIO] Speaking: {text}")
+        
+        # 1. Strip out Markdown characters that confuse the TTS engine
+        clean_text = text.replace('*', '').replace('#', '').replace('_', '').replace('`', '')
+        
+        # 2. Strip out Emojis and unsupported Unicode by forcing clean ASCII
+        clean_text = clean_text.encode('ascii', 'ignore').decode('ascii')
+        
+        print(f"[AUDIO] Speaking: {clean_text}")
         self.stop_requested = False
-        self.tts_queue.put(text)
+        self.tts_queue.put(clean_text)
 
     def interrupt(self):
         """Signals the TTS engine to stop speaking immediately."""
