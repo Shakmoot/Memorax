@@ -1,22 +1,20 @@
-from core.orchestrator import AIAssistant
+import os, time
+from dotenv import load_dotenv
+from google import genai
+from google.genai import types
 
-def main():
-    print("[SYSTEM] Initializing AI Assistant...")
-    assistant = AIAssistant()
-    
-    # Change this to the exact name of your saved image file
-    image_file = "foreign_sign.jpg" 
-    
-    prompt = "Please read and translate all the foreign text in this image into English."
-    
-    print(f"[SYSTEM] Sending {image_file} to Gemini for translation...")
-    
-    try:
-        response = assistant.ask_question(user_text=prompt, image_path=image_file)
-        print(f"\n>>> TRANSLATION RESULT <<<\n{response}\n")
-    except Exception as e:
-        print(f"\n[ERROR] Could not process the image: {e}")
-        print("Make sure the image file is in the same folder as this script!")
+load_dotenv()
+keys = [os.getenv("GEMINI_API_KEY"), os.getenv("GEMINI_API_KEY_2"), os.getenv("GEMINI_API_KEY_3")]
+models = ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
 
-if __name__ == "__main__":
-    main()
+for i, key in enumerate(keys, 1):
+    if not key:
+        continue
+    client = genai.Client(api_key=key, http_options=types.HttpOptions(timeout=15000))
+    for model in models:
+        t0 = time.time()
+        try:
+            r = client.models.generate_content(model=model, contents="Say hello")
+            print(f"key{i} {model}: OK {time.time()-t0:.1f}s -> {r.text[:40]}")
+        except Exception as e:
+            print(f"key{i} {model}: FAIL {time.time()-t0:.1f}s -> {str(e)[:90]}")
